@@ -145,6 +145,13 @@ class MessageType:
 
         raise AttributeError
 
+    def _fill_missing(self):
+        # fill missing fields
+        for tag in self.FIELDS:
+            field = self.FIELDS[tag]
+            if not hasattr(self, field[0]):
+                setattr(self, field[0], None)
+
     def CopyFrom(self, obj):
         self.__dict__ = obj.__dict__.copy()
 
@@ -235,15 +242,9 @@ def load_message(reader, msg_type):
             pvalue = getattr(msg, fname, [])
             pvalue.append(fvalue)
             fvalue = pvalue
-        #print("YYY", fname, fvalue)
         setattr(msg, fname, fvalue)
 
-    # fill missing fields
-    for tag in msg.FIELDS:
-        field = msg.FIELDS[tag]
-        if not hasattr(msg, field[0]):
-            setattr(msg, field[0], None)
-
+    msg._fill_missing()
     return msg
 
 

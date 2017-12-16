@@ -45,6 +45,7 @@ class TxApi(object):
                 return j
             except:
                 pass
+
         try:
             url = self.get_url(resource, resourceid)
             r = requests.get(url, headers={'User-agent': 'Mozilla/5.0'})
@@ -78,7 +79,6 @@ class TxApiInsight(TxApi):
 
         for vin in data['vin']:
             i = t._add_inputs()
-            print(i)
             if 'coinbase' in vin.keys():
                 i.prev_hash = b"\0" * 32
                 i.prev_index = 0xffffffff  # signed int -1

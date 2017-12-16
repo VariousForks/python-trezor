@@ -41,7 +41,6 @@ TXHASH_50f6f1 = binascii.unhexlify('50f6f1209ca92d7359564be803cb2c932cde7d370f7c
 
 
 class TestMsgSigntx(common.TrezorTest):
-
     def test_one_one_fee(self):
         self.setup_mnemonic_nopin_nopassphrase()
 
@@ -635,7 +634,7 @@ class TestMsgSigntx(common.TrezorTest):
             # moUJnmge8SRXuediK7bW6t4YfrPqbE6hD7
             prev_hash=TXHASH_d2dcda,
             prev_index=1,
-            script_type=proto.SPENDADDRESS,
+            script_type=proto.InputScriptType.SPENDADDRESS,
         )
 
         out1 = proto.TxOutputType(

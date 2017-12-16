@@ -398,7 +398,8 @@ class DebugLinkMixin(object):
                                     "Expected %s, got %s" % (pprint(expected), pprint(msg)))
 
             for field, value in expected.__dict__.items():
-                if getattr(msg, field) != value:
+                print("EXPECTED", getattr(expected, field), getattr(msg, field), field, value)
+                if getattr(expected, field) != value:
                     raise CallException(proto.FailureType.UnexpectedMessage,
                                         "Expected %s, got %s" % (pprint(expected), pprint(msg)))
 
@@ -831,6 +832,7 @@ class ProtocolMixin(object):
         msg.coin_name = coin_name
         msg._extend_inputs(inputs)
         msg._extend_outputs(outputs)
+        msg._fill_missing()
 
         known_hashes = []
         for inp in inputs:
@@ -840,6 +842,7 @@ class ProtocolMixin(object):
             tx = msg.transactions.add()
             if self.tx_api:
                 tx.CopyFrom(self.tx_api.get_tx(binascii.hexlify(inp.prev_hash).decode('utf-8')))
+                tx._fill_missing()
             else:
                 raise RuntimeError('TX_API not defined')
             known_hashes.append(inp.prev_hash)
@@ -854,9 +857,10 @@ class ProtocolMixin(object):
         tx = proto.TransactionType()
         tx._extend_inputs(inputs)
         tx._extend_outputs(outputs)
+        tx._fill_missing()
 
         txes = {}
-        txes[b''] = tx
+        txes[None] = tx
 
         known_hashes = []
         for inp in inputs:
@@ -865,6 +869,7 @@ class ProtocolMixin(object):
 
             if self.tx_api:
                 txes[inp.prev_hash] = self.tx_api.get_tx(binascii.hexlify(inp.prev_hash).decode('utf-8'))
+                txes[inp.prev_hash]._fill_missing()
             else:
                 raise RuntimeError('TX_API not defined')
             known_hashes.append(inp.prev_hash)
@@ -907,19 +912,22 @@ class ProtocolMixin(object):
                 log("RECEIVED PART OF SERIALIZED TX (%d BYTES)" % len(res.serialized.serialized_tx))
                 serialized_tx += res.serialized.serialized_tx
 
-            if res.serialized and res.serialized.signature_index:
+            if res.serialized and res.serialized.signature_index is not None:
                 if signatures[res.serialized.signature_index] is not None:
                     raise ValueError("Signature for index %d already filled" % res.serialized.signature_index)
                 signatures[res.serialized.signature_index] = res.serialized.signature
 
-            if res.request_type == proto.TXFINISHED:
+            if res.request_type == proto.RequestType.TXFINISHED:
                 # Device didn't ask for more information, finish workflow
                 break
 
             # Device asked for one more information, let's process it.
-            current_tx = txes[res.details.tx_hash]
+            if not res.details.tx_hash:
+                current_tx = txes[None]
+            else:
+                current_tx = txes[bytes(res.details.tx_hash)]
 
-            if res.request_type == proto.TXMETA:
+            if res.request_type == proto.RequestType.TXMETA:
                 msg = proto.TransactionType()
                 msg.version = current_tx.version
                 msg.lock_time = current_tx.lock_time
@@ -928,11 +936,11 @@ class ProtocolMixin(object):
                     msg.outputs_cnt = len(current_tx.bin_outputs)
                 else:
                     msg.outputs_cnt = len(current_tx.outputs)
-                msg.extra_data_len = len(current_tx.extra_data)
+                msg.extra_data_len = len(current_tx.extra_data) if current_tx.extra_data else 0
                 res = self.call(proto.TxAck(tx=msg))
                 continue
 
-            elif res.request_type == proto.TXINPUT:
+            elif res.request_type == proto.RequestType.TXINPUT:
                 msg = proto.TransactionType()
                 msg._extend_inputs([current_tx.inputs[res.details.request_index], ])
                 if debug_processor is not None:
@@ -944,7 +952,7 @@ class ProtocolMixin(object):
                 res = self.call(proto.TxAck(tx=msg))
                 continue
 
-            elif res.request_type == proto.TXOUTPUT:
+            elif res.request_type == proto.RequestType.TXOUTPUT:
                 msg = proto.TransactionType()
                 if res.details.tx_hash:
                     msg._extend_bin_outputs([current_tx.bin_outputs[res.details.request_index], ])
@@ -960,7 +968,7 @@ class ProtocolMixin(object):
                 res = self.call(proto.TxAck(tx=msg))
                 continue
 
-            elif res.request_type == proto.TXEXTRADATA:
+            elif res.request_type == proto.RequestType.TXEXTRADATA:
                 o, l = res.details.extra_data_offset, res.details.extra_data_len
                 msg = proto.TransactionType()
                 msg.extra_data = current_tx.extra_data[o:o + l]
